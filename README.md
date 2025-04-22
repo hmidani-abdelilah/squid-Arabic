@@ -127,6 +127,26 @@ Squid يعتبر أحد أكثر خوادم الوكيل استخدامًا في
 
 ### كيف يعمل Squid؟
 
+```mermaid
+sequenceDiagram
+   participant Client
+   participant Squid as Squid Proxy
+   participant Origin as Origin Server
+    
+   Note over Client,Origin: First Request (Cache Miss)
+   Client->>Squid: Request Resource
+   Squid->>Origin: Forward Request
+   Origin-->>Squid: Return Content
+   Note over Squid: Store in Cache
+   Squid-->>Client: Return Content
+    
+   Note over Client,Origin: Subsequent Requests (Cache Hit)
+   Client->>Squid: Same Resource Request
+   Note over Squid: Check Cache
+   Squid-->>Client: Return Cached Content
+   Note over Origin: Not Contacted
+```
+
 عندما يرسل المستخدم طلبًا للوصول إلى محتوى معين على الإنترنت، يقوم Squid باعتراض هذا الطلب والتحقق مما إذا كان لديه نسخة مخزنة مؤقتًا من هذا المحتوى. إذا كان الأمر كذلك، فإنه يقدم المحتوى مباشرة من ذاكرة التخزين المؤقت، مما يؤدي إلى تقليل وقت الاستجابة واستخدام النطاق الترددي. إذا لم يكن المحتوى متوفرًا في ذاكرة التخزين المؤقت، فإن Squid يقوم بإعادة توجيه الطلب إلى الخادم الأصلي، ويجلب المحتوى، ويخزنه مؤقتًا للاستخدام المستقبلي قبل تسليمه إلى المستخدم.
 
 ### تاريخ Squid
@@ -136,6 +156,27 @@ Squid يعتبر أحد أكثر خوادم الوكيل استخدامًا في
 ## 2. الإمكانيات الرئيسية لبرنامج Squid
 
 ### التخزين المؤقت (Caching)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Squid
+    participant Origin
+    
+    Note over Client,Squid: Cache Hit Scenario
+    Client->>Squid: HTTP Request
+    Squid->>Squid: Check Cache
+    Note over Squid: Content Found<br/>Valid & Fresh
+    Squid-->>Client: Cached Response
+    
+    Note over Client,Squid: Cache Miss Scenario
+    Client->>Squid: HTTP Request
+    Squid->>Squid: Check Cache
+    Note over Squid: Content Not Found<br/>or Stale
+    Squid->>Origin: Forward Request
+    Origin-->>Squid: Fresh Response
+    Note over Squid: Store in Cache
+    Squid-->>Client: Fresh Response
+```
 
 يقوم Squid بتخزين نسخ من محتوى الويب المطلوب بشكل متكرر في ذاكرة التخزين المؤقت الخاصة به. عندما يطلب مستخدم مورداً معيناً، يتحقق Squid مما إذا كان لديه بالفعل نسخة من المحتوى في ذاكرة التخزين المؤقت. إذا كان الأمر كذلك، فإن Squid يقدم المحتوى مباشرة من ذاكرة التخزين المؤقت، مما يؤدي إلى:
 
@@ -145,6 +186,37 @@ Squid يعتبر أحد أكثر خوادم الوكيل استخدامًا في
 - توفير الموارد على الخوادم الأصلية
 
 ### التوجيه (Forwarding)
+```mermaid
+flowchart LR
+    A[Client Request] --> B{Cache Check}
+    B -->|Hit| C["Cache Response
+    • Content Found
+    • Valid & Fresh"]
+    B -->|Miss| D{Forwarding Decision}
+    D -->|Direct| E["Origin Server
+    • No parent/peer
+    • always_direct rule"]
+    D -->|Parent| F["Parent Cache
+    • never_direct rule
+    • cache_peer config"]
+    D -->|Sibling| G["Sibling Cache
+    • ICP query
+    • cache_peer config"]
+    C --> H[Client]
+    E --> H
+    F --> H
+    G --> H
+
+    style A fill:#f5f5f5,stroke:#333,stroke-width:2px,color:#000000
+    style B fill:#e1f5fe,stroke:#333,stroke-width:2px,color:#000000
+    style C fill:#e8f5e9,stroke:#333,stroke-width:2px,color:#000000
+    style D fill:#e1f5fe,stroke:#333,stroke-width:2px,color:#000000
+    style E fill:#fff3e0,stroke:#333,stroke-width:2px,color:#000000
+    style F fill:#fff3e0,stroke:#333,stroke-width:2px,color:#000000
+    style G fill:#fff3e0,stroke:#333,stroke-width:2px,color:#000000
+    style H fill:#f5f5f5,stroke:#333,stroke-width:2px,color:#000000
+```
+    
 
 يمكن لـ Squid إعادة توجيه طلبات العملاء إلى خوادم الويب نيابة عنهم. فهو يسترجع المحتوى المطلوب من الخادم ويسلمه مرة أخرى إلى العميل. هذا يمكّن خادم الوكيل من:
 
@@ -209,6 +281,51 @@ Squid يعتبر أحد أكثر خوادم الوكيل استخدامًا في
 - SSL (طبقة المقابس الآمنة)
 
 ### تسلسل التخزين المؤقت (Cache Hierarchies)
+```mermaid
+flowchart TD
+    subgraph "Cache Hierarchy Example"
+        direction TB
+        
+        subgraph "Origin Layer"
+            OS["Origin Server
+            (Source of Content)"]
+        end
+        
+        subgraph "Parent Layer"
+            P1["Parent Cache 1
+            (Higher-level cache)"]
+            P2["Parent Cache 2
+            (Higher-level cache)"]
+        end
+        
+        subgraph "Sibling Layer"
+            S1["Sibling Cache 1
+            (Equal-level cache)"]
+            S2["Sibling Cache 2
+            (Equal-level cache)"]
+        end
+        
+        subgraph "Child Layer"
+            C1["Child Cache 1
+            (Lower-level cache)"]
+            C2["Child Cache 2
+            (Lower-level cache)"]
+        end
+        
+        OS --> P1 & P2
+        P1 --> S1 & S2
+        P2 --> S1 & S2
+        S1 & S2 --> C1 & C2
+        
+        style OS fill:#f9f,stroke:#333,color:#000
+        style P1 fill:#bbf,stroke:#333,color:#000
+        style P2 fill:#bbf,stroke:#333,color:#000
+        style S1 fill:#bfb,stroke:#333,color:#000
+        style S2 fill:#bfb,stroke:#333,color:#000
+        style C1 fill:#fbb,stroke:#333,color:#000
+        style C2 fill:#fbb,stroke:#333,color:#000
+    end
+```
 
 يمكن تكوين Squid للعمل في تسلسلات هرمية، مما يسمح بـ:
 
@@ -226,7 +343,44 @@ Squid يعتبر أحد أكثر خوادم الوكيل استخدامًا في
 - إحصاءات الأداء
 - تنبيهات وإشعارات
 - تكامل مع أدوات المراقبة الخارجية
+```mermaid
 
+flowchart TD
+    classDef monitoring fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000
+    classDef management fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+    classDef storage fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#000
+    
+    subgraph Monitoring["Monitoring Components"]
+        A[Access Logs]:::monitoring
+        B[Cache Logs]:::monitoring
+        C[Cache Manager]:::monitoring
+        D[Status Reports]:::monitoring
+    end
+    
+    subgraph Management["Management Components"]
+        E[Configuration Files]:::management
+        F[Access Control]:::management
+        G[Cache Control]:::management
+        H[Performance Control]:::management
+    end
+    
+    subgraph Storage["Storage Components"]
+        I[Cache Storage]:::storage
+        J[Log Files]:::storage
+    end
+    
+    A --> J
+    B --> J
+    C --> D
+    D --> J
+    E --> F
+    E --> G
+    E --> H
+    F --> I
+    G --> I
+    H --> I
+
+```
 ## 3. تنصيب Squid على نظام Debian
 
 ### تحديث النظام
